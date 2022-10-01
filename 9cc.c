@@ -12,6 +12,20 @@ typedef enum {
   TK_EOF       // EOF token
 } TokenKind;
 
+typedef enum {
+  ND_ADD, // +
+  ND_SUB, // -
+  ND_MUL, // *
+  ND_DIV, // /
+  ND_NUM, // 整数
+} NodeKind;
+typedef struct Node Node;
+struct Node {
+  NodeKind kind; // Node type
+  Node *lhs;     // left
+  Node *rhs;     // right
+  int val;       // if kind is ND_NUM use
+};
 typedef struct Token Token;
 
 struct Token {
@@ -21,8 +35,15 @@ struct Token {
   char *str; // token string
 };
 
+Node *expr();
+Node *mul();
+Node *primary();
+
 // now watching token
 Token *token;
+
+// 入力プログラム
+char *user_input;
 
 // error handling function like printf
 void error(char *fmt, ...) {
@@ -32,6 +53,19 @@ void error(char *fmt, ...) {
   exit(1);
 }
 
+void error_at(char *loc, char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+
+  int pos = loc - user_input;
+
+  fprintf(stderr, "%s\n", user_input);
+  fprintf(stderr, "%*s\n", pos, " ");
+  fprintf(stderr, "^ ");
+  vfprintf(stderr, fmt, ap);
+  fprintf(stderr, "\n");
+  exit(1);
+}
 // if next token is expected symbol, advance token and return true
 bool consume(char op) {
   if (token->kind != TK_RESERVED || token->str[0] != op)
@@ -103,6 +137,59 @@ Token *tokenize(char *p) {
   return head.next;
 }
 
+Node *new_node(NodeKind kind, Node *lhs, Node *rhs) {
+  Node *node = calloc(1, sizeof(Node));
+  node->kind = kind;
+  node->lhs = lhs;
+  node->rhs = rhs;
+  return node;
+}
+
+Node *new_node_num(int val) {
+  Node *node = calloc(1, sizeof(Node));
+  node->kind = ND_NUM;
+  node->val = val;
+  return node;
+}
+
+Node *primary() {
+
+  // if the next token is "(" m it should be "(" expr ")".
+  if (consume('(')) {
+    Node *node = expr();
+    expect(')');
+    return node;
+  }
+
+  // else the next token is number
+  return new_node_num(expect_number());
+}
+
+Node *mul() {
+  Node *node = primary();
+  for (;;) {
+    if (consume('*'))
+      node = new_node(ND_MUL, node, primary());
+    else if (consume('/'))
+      node = new_node(ND_DIV, node, primary());
+    else
+      return node;
+  }
+}
+
+Node *expr() {
+  Node *node = mul();
+
+  for (;;) {
+    if (consume('+'))
+      node = new_node(ND_ADD, node, mul());
+    else if (consume('-'))
+      node = new_node(ND_SUB, node, mul());
+    else
+      return node;
+  }
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     fprintf(stderr, "argment is Failed\n");
@@ -126,9 +213,8 @@ int main(int argc, char **argv) {
 
     expect('-');
     printf("  sub rax, %d\n", expect_number());
-
-    printf("  ret\n");
-    return 0;
   }
+
+  printf("  ret\n");
   return 0;
 }
