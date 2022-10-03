@@ -105,6 +105,44 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
   return tok;
 }
 
+void gen(Node *node) {
+
+  if (node->kind == ND_NUM) {
+
+    printf("  push %d\n", node->val);
+
+    return;
+  }
+
+  gen(node->lhs);
+
+  gen(node->rhs);
+
+  printf("  pop rdi\n");
+
+  printf("  pop rax\n");
+
+  switch (node->kind) {
+  case ND_NUM:
+    break;
+  case ND_ADD:
+    printf("  add rax, rdi\n");
+    break;
+  case ND_SUB:
+    printf("  sub rax, rdi\n");
+    break;
+  case ND_MUL:
+    printf("  imul rax, rdi\n");
+    break;
+  case ND_DIV:
+    printf("  cqo\n");
+    printf("  idiv rdi\n");
+    break;
+  }
+
+  printf("  push rax\n");
+}
+
 // tokenize inputed string
 
 Token *tokenize(char *p) {
@@ -119,18 +157,20 @@ Token *tokenize(char *p) {
       continue;
     }
 
-    if (*p == '+' || *p == '-') {
+    // Punctuator
+    if (strchr("+-*/()", *p)) {
       cur = new_token(TK_RESERVED, cur, p++);
       continue;
     }
 
+    // Integer literal
     if (isdigit(*p)) {
       cur = new_token(TK_NUM, cur, p);
       cur->val = strtol(p, &p, 10);
       continue;
     }
 
-    error("Could not tokenize");
+    error_at(p,"invalid token");
   }
 
   new_token(TK_EOF, cur, p);
@@ -196,25 +236,21 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  token = tokenize(argv[1]);
+  // トーク内図してパースする
+  user_input = argv[1];
+  token = tokenize(user_input);
+  Node *node = expr();
 
+  // アセンブリの前半部分を出力
   printf(".intel_syntax noprefix\n");
   printf(".globl main\n");
   printf("main:\n");
 
-  // output first mov order
-  printf("  mov rax, %d\n", expect_number());
+  // 抽象構文木を下りながらコードを生成
+  gen(node);
 
-  while (!at_eof()) {
-    if (consume('+')) {
-      printf("  add rax, %d\n", expect_number());
-      continue;
-    }
-
-    expect('-');
-    printf("  sub rax, %d\n", expect_number());
-  }
-
+  // スタックとドロップに敷き全体の値が残っているはずなのでそれをRAXにロード
+  printf("  pop rax\n");
   printf("  ret\n");
   return 0;
 }
